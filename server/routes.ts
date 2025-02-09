@@ -13,16 +13,37 @@ const createMessageSchema = z.object({
 });
 
 export function registerRoutes(app: Express): Server {
+  // Start FastAPI server when Express starts
+  const pythonProcess = spawn("python3", ["server/github_agent_endpoint.py"], {
+    env: {
+      ...process.env,
+      PATH: process.env.PATH
+    }
+  });
+
+  pythonProcess.stdout.on('data', (data) => {
+    console.log(`FastAPI: ${data}`);
+  });
+
+  pythonProcess.stderr.on('data', (data) => {
+    console.error(`FastAPI Error: ${data}`);
+  });
+
   // Proxy middleware for FastAPI requests
   app.post('/api/github-agent', async (req, res) => {
     try {
-      const response = await fetch('http://localhost:8000/api/github-agent', {
+      const response = await fetch('http://0.0.0.0:8000/api/github-agent', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(req.body)
       });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`FastAPI error: ${errorText}`);
+      }
 
       const data = await response.json();
       res.json(data);
@@ -40,22 +61,6 @@ export function registerRoutes(app: Express): Server {
       console.error('Error fetching messages:', error);
       res.status(500).json({ error: "Failed to fetch messages" });
     }
-  });
-
-  // Start FastAPI server when Express starts
-  const pythonProcess = spawn("python3", ["server/github_agent_endpoint.py"], {
-    env: {
-      ...process.env,
-      PATH: process.env.PATH
-    }
-  });
-
-  pythonProcess.stdout.on('data', (data) => {
-    console.log(`FastAPI: ${data}`);
-  });
-
-  pythonProcess.stderr.on('data', (data) => {
-    console.error(`FastAPI Error: ${data}`);
   });
 
   const httpServer = createServer(app);

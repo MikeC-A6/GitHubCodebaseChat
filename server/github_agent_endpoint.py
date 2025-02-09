@@ -4,7 +4,13 @@ from pydantic import BaseModel
 import httpx
 import asyncpg
 import os
+import sys
 from typing import List, Optional, Dict, Any
+from pathlib import Path
+
+# Add parent directory to Python path
+sys.path.append(str(Path(__file__).parent))
+
 from github_agent import github_agent, GitHubDeps
 from pydantic_ai.messages import ModelRequest, ModelResponse, UserPromptPart, TextPart
 

@@ -13,10 +13,8 @@ import re
 import json
 
 import httpx
-import logfire
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models.openai import OpenAIModel
-from devtools import debug
 
 load_dotenv()
 
