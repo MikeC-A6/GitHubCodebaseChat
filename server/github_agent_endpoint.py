@@ -8,10 +8,20 @@ import os
 from typing import List, Optional, Dict, Any, Union
 import logging
 import json
+from cachetools import TTLCache
+import time
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Cache for repository data (TTL of 5 minutes)
+repo_cache = TTLCache(maxsize=100, ttl=300)
+
+# Rate limiting settings
+RATE_LIMIT_WINDOW = 60  # 1 minute
+MAX_REQUESTS_PER_WINDOW = 30
+request_timestamps = []
 
 try:
     from github_agent import github_agent, GitHubDeps, GitHubResult, Failed
@@ -59,16 +69,55 @@ class AgentResponse(BaseModel):
     error: Optional[str] = None
     repo_url: Optional[str] = None
 
+def check_rate_limit():
+    """Check if we're within rate limits"""
+    current_time = time.time()
+    # Remove timestamps older than the window
+    while request_timestamps and current_time - request_timestamps[0] > RATE_LIMIT_WINDOW:
+        request_timestamps.pop(0)
+    # Check if we're at the limit
+    if len(request_timestamps) >= MAX_REQUESTS_PER_WINDOW:
+        return False
+    request_timestamps.append(current_time)
+    return True
+
 @app.post("/api/github-agent")
 async def github_agent_endpoint(request: AgentRequest):
     try:
         logger.info(f"Received request: {request}")
+        
+        # Check rate limit
+        if not check_rate_limit():
+            error_msg = "Rate limit exceeded. Please try again in a minute."
+            logger.warning(error_msg)
+            return AgentResponse(success=False, error=error_msg, message=error_msg)
+
         # Store user's query
         await store_message(
             session_id=request.sessionId,
             message_type="human",
             content=request.query
         )            
+
+        # Check cache first if it's a repository query
+        cache_key = f"{request.query}_{request.githubUrl if hasattr(request, 'githubUrl') else ''}"
+        if cache_key in repo_cache:
+            logger.info("Returning cached response")
+            cached_response = repo_cache[cache_key]
+            await store_message(
+                session_id=request.sessionId,
+                message_type="ai",
+                content=cached_response['content'],
+                data=json.dumps({
+                    "request_id": request.requestId,
+                    "repo_url": cached_response.get('repo_url')
+                })
+            )
+            return AgentResponse(
+                success=True,
+                message=cached_response['content'],
+                repo_url=cached_response.get('repo_url')
+            )
 
         # Initialize agent dependencies
         async with httpx.AsyncClient() as client:
@@ -103,10 +152,16 @@ async def github_agent_endpoint(request: AgentRequest):
                     error=error_msg,
                     message=error_msg
                 )
-            
+
             # Handle successful result
             response = result.data.content
             repo_url = result.data.repo_url
+
+            # Cache the successful response
+            repo_cache[cache_key] = {
+                'content': response,
+                'repo_url': repo_url
+            }
 
             # Store agent's response
             await store_message(

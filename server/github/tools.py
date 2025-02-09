@@ -94,26 +94,29 @@ async def analyze_codebase(ctx: RunContext, github_url: str) -> str:
         tree = await api.get_tree(github_url)
         
         # Format basic info
-        lines = [format_tree(tree)]
+        lines = [format_tree(tree, show_repo_info=True)]
         
-        # Add suggestions for key files
+        # Add suggestions for key files without fetching content
         key_files = []
         for entry in tree.entries:
+            if entry.type != "blob":
+                continue
+                
             name = entry.name.lower()
-            # Look for important files
-            if entry.type == "blob" and (
-                name in ("readme.md", "requirements.txt", "setup.py", "pyproject.toml") or
-                name.endswith("_agent.py") or
-                name.endswith("_endpoint.py") or
-                name == "__init__.py"
-            ):
+            path = entry.path.lower()
+            
+            # Look for important files but don't fetch them yet
+            if (name in ("readme.md", "requirements.txt", "setup.py", "pyproject.toml", "package.json", "go.mod") or
+                name.endswith(("_agent.py", "_endpoint.py", "main.py", "index.ts", "index.js")) or
+                "src/main" in path or
+                name == "__init__.py"):
                 key_files.append(entry.path)
         
         if key_files:
-            lines.append("\nSuggested files to examine:")
+            lines.append("\nKey files found:")
             for file in sorted(key_files):
                 lines.append(f"- {file}")
-            lines.append("\nI can fetch the content of any of these files on request.")
+            lines.append("\nI can fetch the content of any of these files if needed.")
         
         return "\n".join(lines)
     except GitHubAPIError as e:
