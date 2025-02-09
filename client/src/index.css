@@ -1,8 +1,8 @@
+@import './styles/highlight.css';
+@import './styles/katex.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import './styles/highlight.css';
 
 @layer base {
   * {
