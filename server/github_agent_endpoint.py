@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -91,7 +92,7 @@ async def github_agent_endpoint(request: AgentRequest):
             session_id=request.session_id,
             message_type="human",
             content=request.query
-        )
+        )            
 
         # Initialize agent dependencies
         async with httpx.AsyncClient() as client:
@@ -130,4 +131,5 @@ async def github_agent_endpoint(request: AgentRequest):
 
 if __name__ == "__main__":
     import uvicorn
+    print("Starting FastAPI server on http://0.0.0.0:8000")
     uvicorn.run(app, host="0.0.0.0", port=8000)

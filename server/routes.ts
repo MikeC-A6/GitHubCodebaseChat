@@ -32,7 +32,7 @@ export function registerRoutes(app: Express): Server {
   // Proxy middleware for FastAPI requests
   app.post('/api/github-agent', async (req, res) => {
     try {
-      const response = await fetch('http://0.0.0.0:8000/api/github-agent', {
+      const response = await fetch('http://127.0.0.1:8000/api/github-agent', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
