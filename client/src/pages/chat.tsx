@@ -8,19 +8,27 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { Send, Loader2, Github } from "lucide-react";
 
+type Message = {
+  id: number;
+  type: 'human' | 'ai';
+  content: string;
+  data?: any;
+  created_at: string;
+};
+
 export default function Chat() {
   const [sessionId] = useState(() => nanoid());
   const [input, setInput] = useState("");
   const { toast } = useToast();
 
-  const { data: messages, isLoading } = useQuery({
-    queryKey: ["/api/messages", sessionId],
+  const { data: messages = [], isLoading } = useQuery<Message[]>({
+    queryKey: [`/api/messages/${sessionId}`],
     refetchInterval: 1000
   });
 
   const mutation = useMutation({
     mutationFn: async (query: string) => {
-      const res = await fetch("/api/chat", {
+      const res = await fetch("/api/github-agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -44,7 +52,7 @@ export default function Chat() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
-    
+
     try {
       await mutation.mutateAsync(input);
       setInput("");
@@ -68,9 +76,9 @@ export default function Chat() {
             </div>
           ) : (
             <div className="space-y-4">
-              {messages?.map((msg, i) => (
+              {messages.map((msg) => (
                 <div
-                  key={i}
+                  key={msg.id}
                   className={`p-4 rounded-lg ${
                     msg.type === "human"
                       ? "bg-primary text-primary-foreground ml-12"
