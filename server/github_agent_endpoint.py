@@ -5,9 +5,9 @@ from pydantic import BaseModel
 import httpx
 import asyncpg
 import os
-import sys
 from typing import List, Optional, Dict, Any
 from pathlib import Path
+import sys
 
 # Add parent directory to Python path
 sys.path.append(str(Path(__file__).parent))
@@ -17,7 +17,6 @@ from pydantic_ai.messages import ModelRequest, ModelResponse, UserPromptPart, Te
 
 app = FastAPI()
 
-# Configure CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -47,46 +46,10 @@ class AgentRequest(BaseModel):
 class AgentResponse(BaseModel):
     success: bool
 
-async def fetch_conversation_history(session_id: str, limit: int = 10) -> List[Dict[str, Any]]:
-    """Fetch conversation history from PostgreSQL."""
-    async with pool.acquire() as conn:
-        messages = await conn.fetch(
-            """
-            SELECT * FROM messages 
-            WHERE session_id = $1 
-            ORDER BY created_at DESC 
-            LIMIT $2
-            """,
-            session_id, limit
-        )
-        return [dict(msg) for msg in messages]
-
-async def store_message(session_id: str, message_type: str, content: str, data: Optional[Dict] = None):
-    """Store a message in PostgreSQL."""
-    async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO messages (session_id, type, content, data)
-            VALUES ($1, $2, $3, $4)
-            """,
-            session_id, message_type, content, data
-        )
-
 @app.post("/api/github-agent")
 async def github_agent_endpoint(request: AgentRequest):
     try:
         print(f"Received request: {request}")
-        # Fetch conversation history
-        conversation_history = await fetch_conversation_history(request.session_id)
-
-        # Convert conversation history to format expected by agent
-        messages = []
-        for msg in conversation_history:
-            msg_type = msg["type"]
-            msg_content = msg["content"]
-            msg = ModelRequest(parts=[UserPromptPart(content=msg_content)]) if msg_type == "human" else ModelResponse(parts=[TextPart(content=msg_content)])
-            messages.append(msg)
-
         # Store user's query
         await store_message(
             session_id=request.session_id,
@@ -101,10 +64,9 @@ async def github_agent_endpoint(request: AgentRequest):
                 github_token=os.getenv("GITHUB_TOKEN")
             )
 
-            # Run the agent with conversation history
+            # Run the agent
             result = await github_agent.run(
                 request.query,
-                message_history=messages,
                 deps=deps
             )
 
@@ -128,6 +90,17 @@ async def github_agent_endpoint(request: AgentRequest):
             data={"error": str(e), "request_id": request.request_id}
         )
         return AgentResponse(success=False)
+
+async def store_message(session_id: str, message_type: str, content: str, data: Optional[Dict] = None):
+    """Store a message in PostgreSQL."""
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO messages (session_id, type, content, data)
+            VALUES ($1, $2, $3, $4)
+            """,
+            session_id, message_type, content, data
+        )
 
 if __name__ == "__main__":
     import uvicorn

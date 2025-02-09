@@ -4,30 +4,14 @@ import asyncio
 import os
 from dataclasses import dataclass
 from typing import Any, List, Dict
-import tempfile
-from pathlib import Path
-from dotenv import load_dotenv
-import shutil
-import time
 import re
-import json
+from dotenv import load_dotenv
 
 import httpx
-import logfire
-from pydantic_ai.core import Agent, ModelRetry, RunContext
+from pydantic_ai.core import Agent, RunContext
 from pydantic_ai.models.openai import OpenAIModel
-from devtools import debug
 
 load_dotenv()
-
-llm = os.getenv('LLM_MODEL', 'deepseek/deepseek-chat')
-model = OpenAIModel(
-    llm,
-    base_url = 'https://openrouter.ai/api/v1',
-    api_key=os.getenv('OPEN_ROUTER_API_KEY')
-) if os.getenv('OPEN_ROUTER_API_KEY', None) else OpenAIModel(llm)
-
-logfire.configure(send_to_logfire='if-token-present')
 
 @dataclass
 class GitHubDeps:
@@ -48,11 +32,16 @@ When answering a question about the repo, always start your answer with the full
 Your answer here...
 """
 
+model = OpenAIModel(
+    os.getenv('LLM_MODEL', 'deepseek/deepseek-chat'),
+    base_url='https://openrouter.ai/api/v1',
+    api_key=os.getenv('OPEN_ROUTER_API_KEY')
+)
+
 github_agent = Agent(
     model,
     system_prompt=system_prompt,
-    deps_type=GitHubDeps,
-    retries=2
+    deps_type=GitHubDeps
 )
 
 @github_agent.tool
