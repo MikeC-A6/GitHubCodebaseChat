@@ -1,0 +1,77 @@
+---
+description: Understanding Pydantic AI agent framework
+globs: 
+---
+
+# PydanticAI Framework Guidelines
+
+## Key Documentation References
+- @Instructions/PydanticAI/agents.md: Core agent concepts and implementation patterns
+- @Instructions/PydanticAI/models.md: Model configuration and usage
+- @Instructions/PydanticAI/function_tools.md: Tool implementation and patterns
+- @Instructions/PydanticAI/multi-agent_applications.md: Multi-agent system design
+
+## Framework Principles
+
+1. Agent Structure
+- Agents are reusable components similar to FastAPI apps
+- Each agent contains:
+  - System prompts for LLM instructions
+  - Function tools for external interactions
+  - Structured result types for output validation
+  - Dependency constraints
+  - LLM model configuration
+  - Model settings
+
+2. Implementation Patterns
+- Use type hints and Pydantic models for validation
+- Implement tools as async functions when possible
+- Structure complex workflows using multiple agents
+- Leverage dependency injection for configuration
+
+3. Best Practices
+- Define agents as module-level globals for reuse
+- Use structured types for input/output validation
+- Implement proper error handling and validation
+- Follow async patterns for scalable applications
+- Document system prompts and tools clearly
+
+
+## Development Guidelines
+
+When implementing new features:
+1. Review relevant documentation sections first
+2. Reference the Working Example implementation
+3. Follow type safety and validation patterns
+4. Use async functions for I/O operations
+5. Structure code for reusability
+6. Implement proper error handling
+7. Document system prompts clearly
+8. Test with various input scenarios
+
+## Common Patterns
+
+1. Agent Creation:
+```python
+agent = Agent(
+    model="openai:gpt-4",
+    deps_type=YourDepsModel,
+    result_type=YourResultType,
+    system_prompt="Clear instructions for the LLM"
+)
+```
+
+2. Tool Implementation:
+```python
+@agent.tool
+async def your_tool(ctx: RunContext[YourDepsType], param: str) -> str:
+    """Clear docstring explaining tool purpose"""
+    # Implementation
+```
+
+3. Agent Execution:
+```python
+result = await agent.run("User prompt", deps=your_deps)
+# or
+result = agent.run_sync("User prompt", deps=your_deps)
+```
