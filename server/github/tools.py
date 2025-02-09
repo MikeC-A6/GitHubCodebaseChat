@@ -3,24 +3,42 @@ from pydantic_ai import RunContext
 from .api import GitHubAPI, GitHubAPIError
 from .types import GitHubTree, GitHubFile
 
-def format_tree(tree: GitHubTree) -> str:
+def format_tree(tree: GitHubTree, show_repo_info: bool = True) -> str:
     """Format repository tree for display."""
-    repo = tree.repository
-    lines = [
-        f"Repository: {repo.nameWithOwner}",
-        f"Description: {repo.description or 'No description'}",
-        f"Size: {repo.diskUsage / 1024:.1f}MB",
-        f"Stars: {repo.stargazerCount}",
-        f"Language: {repo.primaryLanguage['name'] if repo.primaryLanguage else 'None'}",
-        f"Created: {repo.createdAt}",
-        f"Last Updated: {repo.updatedAt}",
-        "\nContents:"
-    ]
+    lines = []
     
+    if show_repo_info:
+        repo = tree.repository
+        lines.extend([
+            f"Repository: {repo.nameWithOwner}",
+            f"Description: {repo.description or 'No description'}",
+            f"Size: {repo.diskUsage / 1024:.1f}MB",
+            f"Stars: {repo.stargazerCount}",
+            f"Language: {repo.primaryLanguage['name'] if repo.primaryLanguage else 'None'}",
+            f"Created: {repo.createdAt}",
+            f"Last Updated: {repo.updatedAt}",
+            "\nFiles and Directories:"
+        ])
+    
+    # Group entries by directory
+    by_dir = {}
     for entry in tree.entries:
-        prefix = "📁" if entry.type == "tree" else "📄"
-        size = f"({entry.object['byteSize']} bytes)" if entry.type == "blob" and entry.object else ""
-        lines.append(f"{prefix} {entry.path} {size}")
+        dir_path = '/'.join(entry.path.split('/')[:-1])
+        if dir_path not in by_dir:
+            by_dir[dir_path] = []
+        by_dir[dir_path].append(entry)
+    
+    # Format entries by directory
+    for dir_path in sorted(by_dir.keys()):
+        if dir_path:
+            lines.append(f"\n📂 {dir_path}/")
+        entries = by_dir[dir_path]
+        for entry in sorted(entries, key=lambda e: (e.type != "tree", e.name)):
+            prefix = "📁" if entry.type == "tree" else "📄"
+            name = entry.path.split('/')[-1]
+            size = f"({entry.object['byteSize']} bytes)" if entry.type == "blob" and entry.object else ""
+            indent = "  " if dir_path else ""
+            lines.append(f"{indent}{prefix} {name} {size}")
         
     return "\n".join(lines)
 
@@ -61,5 +79,42 @@ async def get_file_content(ctx: RunContext, github_url: str) -> str:
         if file.isBinary:
             return f"Binary file ({file.byteSize} bytes)"
         return file.text or "Empty file"
+    except GitHubAPIError as e:
+        return str(e)
+
+async def analyze_codebase(ctx: RunContext, github_url: str) -> str:
+    """Two-phase analysis of a codebase.
+    1. Get directory structure
+    2. Return formatted structure with key file suggestions
+    """
+    api = GitHubAPI(ctx.deps.client, ctx.deps.github_token)
+    
+    try:
+        # Phase 1: Get directory structure
+        tree = await api.get_tree(github_url)
+        
+        # Format basic info
+        lines = [format_tree(tree)]
+        
+        # Add suggestions for key files
+        key_files = []
+        for entry in tree.entries:
+            name = entry.name.lower()
+            # Look for important files
+            if entry.type == "blob" and (
+                name in ("readme.md", "requirements.txt", "setup.py", "pyproject.toml") or
+                name.endswith("_agent.py") or
+                name.endswith("_endpoint.py") or
+                name == "__init__.py"
+            ):
+                key_files.append(entry.path)
+        
+        if key_files:
+            lines.append("\nSuggested files to examine:")
+            for file in sorted(key_files):
+                lines.append(f"- {file}")
+            lines.append("\nI can fetch the content of any of these files on request.")
+        
+        return "\n".join(lines)
     except GitHubAPIError as e:
         return str(e) 

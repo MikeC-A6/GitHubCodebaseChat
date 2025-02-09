@@ -2,6 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
+@import './styles/highlight.css';
+
 @layer base {
   * {
     @apply border-border;

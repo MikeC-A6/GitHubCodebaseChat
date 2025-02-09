@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { nanoid } from "nanoid";
+import ReactMarkdown from "react-markdown";
+import type { Components } from "react-markdown/lib/ast-to-react";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize from "rehype-sanitize";
+import rehypeHighlight from "rehype-highlight";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -81,11 +86,66 @@ export default function Chat() {
                   key={msg.id}
                   className={`p-4 rounded-lg ${
                     msg.type === "human"
-                      ? "bg-primary text-primary-foreground ml-12"
-                      : "bg-muted mr-12"
+                      ? "bg-blue-600 text-white ml-12"
+                      : "bg-gray-100 text-gray-900 mr-12"
                   }`}
                 >
-                  {msg.content}
+                  <div className={`prose max-w-none ${
+                    msg.type === "human" 
+                      ? "prose-invert prose-pre:bg-blue-700/50 prose-pre:border-blue-500 prose-code:bg-blue-700/30" 
+                      : "prose-gray prose-pre:bg-gray-200 prose-pre:border-gray-300 prose-code:bg-gray-200"
+                  } prose-pre:my-0 prose-pre:border`}>
+                    <ReactMarkdown
+                      rehypePlugins={[rehypeRaw, rehypeSanitize, rehypeHighlight]}
+                      components={{
+                        code: ({ className, children, ...props }: Components['code']) => {
+                          const match = /language-(\w+)/.exec(className || '');
+                          const isHuman = props.node?.position?.start.line === 1; // Hack to determine message type
+                          return !props.inline && match ? (
+                            <div className="relative">
+                              <pre className={`${className} rounded p-4 ${
+                                isHuman 
+                                  ? "!bg-blue-700/50 border-blue-500" 
+                                  : "!bg-gray-200 border-gray-300"
+                              }`}>
+                                <code className={`${className} ${isHuman ? "text-blue-50" : "text-gray-900"}`} {...props}>
+                                  {children}
+                                </code>
+                              </pre>
+                            </div>
+                          ) : (
+                            <code className={`${className} rounded px-1.5 py-0.5 ${
+                              isHuman 
+                                ? "bg-blue-700/30 text-blue-50" 
+                                : "bg-gray-200 text-gray-900"
+                            }`} {...props}>
+                              {children}
+                            </code>
+                          );
+                        },
+                        p: ({ children }) => <p className="mb-4 last:mb-0">{children}</p>,
+                        ul: ({ children }) => (
+                          <ul className="list-disc list-inside mb-4 last:mb-0">{children}</ul>
+                        ),
+                        ol: ({ children }) => (
+                          <ol className="list-decimal list-inside mb-4 last:mb-0">{children}</ol>
+                        ),
+                        li: ({ children }) => <li className="mb-1 last:mb-0">{children}</li>,
+                        a: ({ href, children }) => (
+                          <a 
+                            href={href} 
+                            className="underline hover:opacity-80" 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                          >
+                            {children}
+                          </a>
+                        ),
+                      }}
+                    >
+                      {msg.content}
+                    </ReactMarkdown>
+                  </div>
                 </div>
               ))}
             </div>

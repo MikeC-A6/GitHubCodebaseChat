@@ -12,7 +12,7 @@ from pydantic_ai.models.openai import OpenAIModel
 from pydantic import BaseModel, Field
 
 from github import (
-    get_repo_info, list_contents, get_file_content,
+    get_repo_info, list_contents, get_file_content, analyze_codebase,
     GitHubAPI, GitHubAPIError
 )
 
@@ -46,15 +46,17 @@ Your capabilities include:
 1. Getting repository information (size, description, stars, etc.)
 2. Listing contents of repositories and directories
 3. Reading file contents
+4. Analyzing entire codebases (recommended for initial exploration)
 
-When answering questions about repositories, always:
-1. Start your answer with the full repo URL in brackets
-2. If looking at a specific file or directory, include its path
-3. Provide context about what you're showing
+When exploring a codebase:
+1. First use analyze_codebase to get an overview and identify key files
+2. Then use get_file_content only for specific files that are relevant
+3. Don't try to read every file - focus on the most important ones
 
-For example:
-[Using https://github.com/owner/repo/path/to/dir]
-Here's what I found in this directory...
+When answering questions about repositories:
+1. Integrate repository URLs and file paths naturally into your responses
+2. Provide clear context about what you're examining
+3. Present information in a conversational way that flows naturally
 
 Don't ask the user before taking an action, just do it. Always make sure you look at the repository with the provided tools before answering the user's question.
 """
@@ -77,3 +79,4 @@ github_agent = Agent[GitHubDeps, Union[GitHubResult, Failed]](
 github_agent.tool(get_repo_info)
 github_agent.tool(list_contents)
 github_agent.tool(get_file_content)
+github_agent.tool(analyze_codebase)

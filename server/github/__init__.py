@@ -5,7 +5,7 @@ from .types import (
     GitHubRepoInfo, GitHubTreeEntry, GitHubTree,
     GitHubFile, GraphQLQuery, GraphQLResponse
 )
-from .tools import get_repo_info, list_contents, get_file_content
+from .tools import get_repo_info, list_contents, get_file_content, analyze_codebase
 
 __all__ = [
     # API classes
@@ -24,4 +24,5 @@ __all__ = [
     'get_repo_info',
     'list_contents',
     'get_file_content',
+    'analyze_codebase',
 ] 
