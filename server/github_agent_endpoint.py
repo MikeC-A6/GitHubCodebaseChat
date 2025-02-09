@@ -81,6 +81,39 @@ def check_rate_limit():
     request_timestamps.append(current_time)
     return True
 
+async def fetch_conversation_history(session_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """Fetch the most recent conversation history for a session.
+    
+    Args:
+        session_id: The session ID to fetch history for
+        limit: Maximum number of messages to fetch (default: 10)
+        
+    Returns:
+        List of message dictionaries in chronological order
+    """
+    try:
+        async with pool.acquire() as conn:
+            # Fetch messages in reverse chronological order
+            rows = await conn.fetch(
+                """
+                SELECT * FROM messages 
+                WHERE session_id = $1
+                ORDER BY created_at DESC 
+                LIMIT $2
+                """,
+                session_id, limit
+            )
+            
+            # Convert to list and reverse to get chronological order
+            messages = [dict(row) for row in rows][::-1]
+            return messages
+    except Exception as e:
+        logger.error(f"Failed to fetch conversation history: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch conversation history: {str(e)}"
+        )
+
 @app.post("/api/github-agent")
 async def github_agent_endpoint(request: AgentRequest):
     try:
@@ -92,6 +125,21 @@ async def github_agent_endpoint(request: AgentRequest):
             logger.warning(error_msg)
             return AgentResponse(success=False, error=error_msg, message=error_msg)
 
+        # Fetch conversation history to get the last repo URL
+        conversation_history = await fetch_conversation_history(request.sessionId)
+        last_repo_url = None
+        
+        # Extract the last repo URL from conversation history
+        for msg in reversed(conversation_history):
+            if msg.get("message", {}).get("data"):
+                try:
+                    data = json.loads(msg["message"]["data"])
+                    if data.get("repo_url"):
+                        last_repo_url = data["repo_url"]
+                        break
+                except json.JSONDecodeError:
+                    continue
+
         # Store user's query
         await store_message(
             session_id=request.sessionId,
@@ -100,7 +148,7 @@ async def github_agent_endpoint(request: AgentRequest):
         )            
 
         # Check cache first if it's a repository query
-        cache_key = f"{request.query}_{request.githubUrl if hasattr(request, 'githubUrl') else ''}"
+        cache_key = f"{request.query}_{last_repo_url if last_repo_url else ''}"
         if cache_key in repo_cache:
             logger.info("Returning cached response")
             cached_response = repo_cache[cache_key]
@@ -110,13 +158,13 @@ async def github_agent_endpoint(request: AgentRequest):
                 content=cached_response['content'],
                 data=json.dumps({
                     "request_id": request.requestId,
-                    "repo_url": cached_response.get('repo_url')
+                    "repo_url": cached_response.get('repo_url') or last_repo_url
                 })
             )
             return AgentResponse(
                 success=True,
                 message=cached_response['content'],
-                repo_url=cached_response.get('repo_url')
+                repo_url=cached_response.get('repo_url') or last_repo_url
             )
 
         # Initialize agent dependencies
@@ -126,10 +174,32 @@ async def github_agent_endpoint(request: AgentRequest):
                 github_token=os.getenv("GITHUB_TOKEN")
             )
 
+            # Convert conversation history to format expected by agent
+            messages = []
+            for msg in conversation_history:
+                try:
+                    # Handle messages stored directly in content field
+                    msg_type = msg.get("type")
+                    msg_content = msg.get("content")
+                    
+                    # If message is in the message object structure
+                    if not msg_type and not msg_content:
+                        msg_obj = msg.get("message", {})
+                        msg_type = msg_obj.get("type")
+                        msg_content = msg_obj.get("content")
+                    
+                    if msg_type and msg_content:
+                        msg = ModelRequest(parts=[UserPromptPart(content=msg_content)]) if msg_type == "human" else ModelResponse(parts=[TextPart(content=msg_content)])
+                        messages.append(msg)
+                except Exception as e:
+                    logger.warning(f"Failed to process message in conversation history: {e}")
+                    continue
+
             logger.debug("Running agent with query: %s", request.query)
-            # Run the agent
+            # Run the agent with conversation history and last repo URL
             result = await github_agent.run(
                 request.query,
+                message_history=messages,
                 deps=deps
             )
             logger.debug("Agent result: %s", result)
@@ -155,7 +225,7 @@ async def github_agent_endpoint(request: AgentRequest):
 
             # Handle successful result
             response = result.data.content
-            repo_url = result.data.repo_url
+            repo_url = result.data.repo_url or last_repo_url
 
             # Cache the successful response
             repo_cache[cache_key] = {
