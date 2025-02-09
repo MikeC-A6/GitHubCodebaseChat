@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { insertMessageSchema } from "@shared/schema";
 import { spawn } from "child_process";
 import { z } from "zod";
+import fetch from "node-fetch";
 
 const createMessageSchema = z.object({
   sessionId: z.string(),
@@ -12,44 +13,22 @@ const createMessageSchema = z.object({
 });
 
 export function registerRoutes(app: Express): Server {
-  app.post("/api/chat", async (req, res) => {
+  // Proxy middleware for FastAPI requests
+  app.post('/api/github-agent', async (req, res) => {
     try {
-      const body = createMessageSchema.parse(req.body);
-
-      // Store user message
-      await storage.createMessage({
-        sessionId: body.sessionId,
-        type: "human",
-        content: body.query,
-        data: null
+      const response = await fetch('http://localhost:8000/api/github-agent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(req.body)
       });
 
-      // Call Python agent
-      const pythonProcess = spawn("python3", ["server/github_agent_endpoint.py"], {
-        env: {
-          ...process.env,
-          QUERY: body.query,
-          SESSION_ID: body.sessionId,
-          REQUEST_ID: body.requestId
-        }
-      });
-
-      pythonProcess.on("close", async (code) => {
-        if (code !== 0) {
-          await storage.createMessage({
-            sessionId: body.sessionId,
-            type: "ai",
-            content: "Sorry, I encountered an error processing your request.",
-            data: { error: true }
-          });
-          res.status(500).json({ error: "Agent process failed" });
-          return;
-        }
-        res.json({ success: true });
-      });
-
+      const data = await response.json();
+      res.json(data);
     } catch (error) {
-      res.status(400).json({ error: "Invalid request" });
+      console.error('FastAPI proxy error:', error);
+      res.status(500).json({ error: "Failed to reach GitHub agent service" });
     }
   });
 
@@ -58,8 +37,25 @@ export function registerRoutes(app: Express): Server {
       const messages = await storage.getMessagesBySession(req.params.sessionId);
       res.json(messages);
     } catch (error) {
+      console.error('Error fetching messages:', error);
       res.status(500).json({ error: "Failed to fetch messages" });
     }
+  });
+
+  // Start FastAPI server when Express starts
+  const pythonProcess = spawn("python3", ["server/github_agent_endpoint.py"], {
+    env: {
+      ...process.env,
+      PATH: process.env.PATH
+    }
+  });
+
+  pythonProcess.stdout.on('data', (data) => {
+    console.log(`FastAPI: ${data}`);
+  });
+
+  pythonProcess.stderr.on('data', (data) => {
+    console.error(`FastAPI Error: ${data}`);
   });
 
   const httpServer = createServer(app);

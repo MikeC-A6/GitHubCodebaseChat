@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import httpx
 import asyncpg
@@ -9,18 +10,27 @@ from pydantic_ai.messages import ModelRequest, ModelResponse, UserPromptPart, Te
 
 app = FastAPI()
 
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Database connection pool
 pool = None
 
 @app.on_event("startup")
 async def startup():
     global pool
-    pool = await asyncpg.create_pool(os.getenv("DATABASE_URL"))
-
-@app.on_event("shutdown")
-async def shutdown():
-    if pool:
-        await pool.close()
+    try:
+        pool = await asyncpg.create_pool(os.getenv("DATABASE_URL"))
+        print("Successfully connected to database")
+    except Exception as e:
+        print(f"Failed to connect to database: {str(e)}")
+        raise
 
 class AgentRequest(BaseModel):
     query: str
@@ -58,6 +68,7 @@ async def store_message(session_id: str, message_type: str, content: str, data: 
 @app.post("/api/github-agent")
 async def github_agent_endpoint(request: AgentRequest):
     try:
+        print(f"Received request: {request}")
         # Fetch conversation history
         conversation_history = await fetch_conversation_history(request.session_id)
 
