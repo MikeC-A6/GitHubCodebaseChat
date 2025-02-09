@@ -13,22 +13,26 @@ import re
 import json
 
 import httpx
-from pydantic_ai import Agent, ModelRetry, RunContext
+import logfire
+from pydantic_ai.core import Agent, ModelRetry, RunContext
 from pydantic_ai.models.openai import OpenAIModel
+from devtools import debug
 
 load_dotenv()
+
+llm = os.getenv('LLM_MODEL', 'deepseek/deepseek-chat')
+model = OpenAIModel(
+    llm,
+    base_url = 'https://openrouter.ai/api/v1',
+    api_key=os.getenv('OPEN_ROUTER_API_KEY')
+) if os.getenv('OPEN_ROUTER_API_KEY', None) else OpenAIModel(llm)
+
+logfire.configure(send_to_logfire='if-token-present')
 
 @dataclass
 class GitHubDeps:
     client: httpx.AsyncClient
     github_token: str | None = None
-
-llm = 'google/gemini-2.0-flash-001'
-model = OpenAIModel(
-    llm,
-    base_url = 'https://openrouter.ai/api/v1',
-    api_key=os.getenv('OPEN_ROUTER_API_KEY')
-)
 
 system_prompt = """
 You are a coding expert with access to GitHub to help the user manage their repository and get information from it.
@@ -53,10 +57,10 @@ github_agent = Agent(
 
 @github_agent.tool
 async def get_repo_info(ctx: RunContext[GitHubDeps], github_url: str) -> str:
-    """Get repository information using GitHub API.
+    """Get repository information including size and description using GitHub API.
 
     Args:
-        ctx: The context containing dependencies.
+        ctx: The context.
         github_url: The GitHub repository URL.
 
     Returns:

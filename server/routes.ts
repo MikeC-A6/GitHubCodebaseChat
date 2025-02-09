@@ -21,17 +21,31 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  let serverStarted = false;
+
   pythonProcess.stdout.on('data', (data) => {
-    console.log(`FastAPI: ${data}`);
+    const output = data.toString();
+    console.log(`FastAPI: ${output}`);
+    if (output.includes("Application startup complete")) {
+      serverStarted = true;
+    }
   });
 
   pythonProcess.stderr.on('data', (data) => {
     console.error(`FastAPI Error: ${data}`);
   });
 
+  pythonProcess.on('error', (error) => {
+    console.error('Failed to start FastAPI server:', error);
+  });
+
   // Proxy middleware for FastAPI requests
   app.post('/api/github-agent', async (req, res) => {
     try {
+      if (!serverStarted) {
+        throw new Error("FastAPI server is not ready yet");
+      }
+
       const response = await fetch('http://127.0.0.1:8000/api/github-agent', {
         method: 'POST',
         headers: {
