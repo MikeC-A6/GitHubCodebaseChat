@@ -3,4 +3,12 @@ name = "repl-nix-workspace"
 version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "asyncpg==0.29.0",
+    "pydantic-ai>=0.0.0",
+    "pydantic==2.5.3",
+    "python-dotenv==1.0.0",
+    "fastapi==0.109.1",
+    "uvicorn==0.27.0",
+    "httpx==0.26.0",
+]
